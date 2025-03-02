@@ -1,16 +1,48 @@
 button#main_button {
-    font-family: Georgia;
-    background: #5dd252;
-    font-size: 20px;
-    font-weight: bold;
-    color: #ffffff;
-    border-radius: 50px;
-    padding: 10px;
-    transition: all 500ms ease;
-  }
+  font-family: Georgia;
+  background: #5dd252;
+  font-size: 20px;
+  font-weight: bold;
+  color: #ffffff;
+  border-radius: 50px;
+  padding: 10px;
+  transition: all 500ms ease;
+}
 
 button#main_button:hover {
-    background: #ffffff;
-    color: #5dd252;
-    box-shadow: inset 0 0 0 3px #5dd252;
+  background: #ffffff;
+  color: #5dd252;
+  box-shadow: inset 0 0 0 3px #5dd252;
+}
+
+box#working_box {
+  background: #434242;
+}
+
+label#explanatory_label {
+  font-family: Georgia;
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-left: 50px;
+  margin-right: 50px;
+}
+
+entry#file_path_entry {
+  font-family: Georgia;
+  font-size: 20px;
+  margin-top: 430px;
+  margin-bottom: 70px;
+  margin-left: 50px;
+  margin-right: 50px;
+}
+
+overlay#left_side_overlay{
+  margin: 10px;
+  min-width: 670px;
+  border-color: rgb(146, 137, 137);
+  border-width: 8px;
+  border-style: double;
+  border-radius: 20px;
+  padding: 5px;
 }

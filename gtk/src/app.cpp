@@ -1,7 +1,33 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
 #include "../include/app.h"
+
+typedef struct {
+    GtkPicture* picture;
+    GdkPixbufAnimation* animation;
+    GdkPixbufAnimationIter* iter;
+    guint timeout_id;
+} AnimationData;
+
+static gboolean update_animation(gpointer user_data) {
+    AnimationData* data = (AnimationData*)user_data;
+
+    gdk_pixbuf_animation_iter_advance(data->iter, NULL);
+
+    GdkPixbuf* frame = gdk_pixbuf_animation_iter_get_pixbuf(data->iter);
+    GdkPaintable* paintable = GDK_PAINTABLE(gdk_texture_new_for_pixbuf(frame));
+
+    gtk_picture_set_paintable(data->picture, paintable);
+
+    int delay = gdk_pixbuf_animation_iter_get_delay_time(data->iter);
+
+    g_source_remove(data->timeout_id);
+    data->timeout_id = g_timeout_add(delay, update_animation, data);
+
+    return G_SOURCE_REMOVE;
+}
 
 // some shit with including css
 static void load_css(void) {
@@ -35,7 +61,58 @@ static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
     // do some magic css stuff
     load_css();
 
-    gtk_window_present          (GTK_WINDOW(working_window));
+    // create working box
+    GtkWidget* working_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(working_box, "working_box");
+    gtk_window_set_child(GTK_WINDOW(working_window), working_box);
+
+    // create gif
+    GtkWidget* picture = gtk_picture_new();
+    gtk_widget_set_hexpand(picture, TRUE);
+
+    // set gif and animation
+    GError* error = NULL;
+    GdkPixbufAnimation* animation = gdk_pixbuf_animation_new_from_file("img/gif.gif", &error);
+
+    GdkPixbufAnimationIter* iter = gdk_pixbuf_animation_get_iter(animation, NULL);
+
+    AnimationData* data = g_new0(AnimationData, 1);
+    data->picture = GTK_PICTURE(picture);
+    data->animation = animation;
+    data->iter = iter;
+
+    data->timeout_id = g_timeout_add(100, update_animation, data);
+
+    gtk_widget_set_halign(picture, GTK_ALIGN_END);
+    gtk_widget_set_valign(picture, GTK_ALIGN_FILL);
+
+    // create overlay for left side of working window
+    GtkWidget* left_side_overlay = gtk_overlay_new();
+    gtk_widget_set_name(left_side_overlay, "left_side_overlay");
+    gtk_box_append(GTK_BOX(working_box), left_side_overlay);
+
+    // set gif as box child
+    gtk_box_append(GTK_BOX(working_box), picture);
+
+    // create explanatory label
+    GtkWidget* explanatory_label = gtk_label_new(NULL);
+    gtk_widget_set_name(explanatory_label, "explanatory_label");
+    gtk_label_set_markup(GTK_LABEL(explanatory_label), "Welcome! To start the job write down the file, you "
+                                                       "want to crack.");
+    gtk_label_set_wrap(GTK_LABEL(explanatory_label), TRUE);
+    // gtk_widget_set_halign(explanatory_label, GTK_ALIGN_START);
+    // gtk_widget_set_valign(explanatory_label, GTK_ALIGN_CENTER);
+
+    gtk_overlay_set_child(GTK_OVERLAY(left_side_overlay), explanatory_label);
+
+    // create entry
+    GtkWidget* file_path_entry= gtk_entry_new();
+    gtk_widget_set_name(file_path_entry, "file_path_entry");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(file_path_entry), "Input path to file you want to crack");
+
+    gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), file_path_entry);
+
+    gtk_window_present(GTK_WINDOW(working_window));
 }
 
 static void runMainWindow(GtkApplication* app, gpointer* user_data){
