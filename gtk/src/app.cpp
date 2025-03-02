@@ -1,8 +1,10 @@
 #include <stdio.h>
+#include <time.h>
 #include <gtk/gtk.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
 #include "../include/app.h"
+#include "../include/patch.h"
 
 typedef struct {
     GtkPicture* picture;
@@ -44,6 +46,28 @@ static void load_css(void) {
         display,
         GTK_STYLE_PROVIDER(provider),
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
+static void crackFile(GtkButton* crack_button, gpointer* user_data){
+    GtkOverlay* left_side_overlay = GTK_OVERLAY(user_data);
+    GtkWidget* explanatory_label = gtk_overlay_get_child(left_side_overlay);
+
+    GtkWidget* file_path_entry = gtk_widget_get_first_child(GTK_WIDGET(left_side_overlay));
+    file_path_entry = gtk_widget_get_next_sibling(file_path_entry);
+
+    GtkEntryBuffer* file_path_buffer = gtk_entry_get_buffer(GTK_ENTRY(file_path_entry));
+    const char* file_path = gtk_entry_buffer_get_text(file_path_buffer);
+
+    FILE* file_to_crack = fopen(file_path, "r");
+    if (!file_to_crack){
+        gtk_label_set_label(GTK_LABEL(explanatory_label), "Sorry! But this file doesn't exist! Try another one");
+        return;
+    }
+
+    binaryPatch(file_path);
+
+    gtk_label_set_label(GTK_LABEL(explanatory_label), "!-------Work in progress-------!");
+
 }
 
 static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
@@ -100,17 +124,21 @@ static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
     gtk_label_set_markup(GTK_LABEL(explanatory_label), "Welcome! To start the job write down the file, you "
                                                        "want to crack.");
     gtk_label_set_wrap(GTK_LABEL(explanatory_label), TRUE);
-    // gtk_widget_set_halign(explanatory_label, GTK_ALIGN_START);
-    // gtk_widget_set_valign(explanatory_label, GTK_ALIGN_CENTER);
 
     gtk_overlay_set_child(GTK_OVERLAY(left_side_overlay), explanatory_label);
 
     // create entry
-    GtkWidget* file_path_entry= gtk_entry_new();
+    GtkWidget* file_path_entry = gtk_entry_new();
     gtk_widget_set_name(file_path_entry, "file_path_entry");
     gtk_entry_set_placeholder_text(GTK_ENTRY(file_path_entry), "Input path to file you want to crack");
 
     gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), file_path_entry);
+
+    // create crack button
+    GtkWidget* crack_button = gtk_button_new_with_label("Crack this!");
+    gtk_widget_set_name(crack_button, "crack_button");
+    gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), crack_button);
+    g_signal_connect(crack_button, "clicked", G_CALLBACK(crackFile), left_side_overlay);
 
     gtk_window_present(GTK_WINDOW(working_window));
 }
