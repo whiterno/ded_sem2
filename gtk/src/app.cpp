@@ -2,6 +2,7 @@
 #include <time.h>
 #include <gtk/gtk.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <gst/gst.h>
 
 #include "../include/app.h"
 #include "../include/patch.h"
@@ -13,7 +14,7 @@ typedef struct {
     guint timeout_id;
 } AnimationData;
 
-static gboolean update_animation(gpointer user_data) {
+static gboolean updateAnimation(gpointer user_data) {
     AnimationData* data = (AnimationData*)user_data;
 
     gdk_pixbuf_animation_iter_advance(data->iter, NULL);
@@ -26,13 +27,20 @@ static gboolean update_animation(gpointer user_data) {
     int delay = gdk_pixbuf_animation_iter_get_delay_time(data->iter);
 
     g_source_remove(data->timeout_id);
-    data->timeout_id = g_timeout_add(delay, update_animation, data);
+    data->timeout_id = g_timeout_add(delay, updateAnimation, data);
+
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean updateLabel(gpointer user_data){
+    GtkWidget* label = (GtkWidget*)user_data;
+    gtk_label_set_text(GTK_LABEL(label), "SUCCESS! Enjoy your superiority");
 
     return G_SOURCE_REMOVE;
 }
 
 // some shit with including css
-static void load_css(void) {
+static void loadCSS(void) {
     GtkCssProvider *provider;
     GdkDisplay *display;
 
@@ -46,6 +54,15 @@ static void load_css(void) {
         display,
         GTK_STYLE_PROVIDER(provider),
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
+static gboolean closeRequest(GtkWindow *window, gpointer* user_data){
+    GstElement *pipeline = GST_ELEMENT(g_object_get_data(G_OBJECT(window), "pipeline"));
+
+    gst_element_set_state (pipeline, GST_STATE_NULL);
+    gst_object_unref (pipeline);
+
+    return FALSE;
 }
 
 static void crackFile(GtkButton* crack_button, gpointer* user_data){
@@ -68,6 +85,7 @@ static void crackFile(GtkButton* crack_button, gpointer* user_data){
 
     gtk_label_set_label(GTK_LABEL(explanatory_label), "!-------Work in progress-------!");
 
+    g_timeout_add_seconds(3, updateLabel, explanatory_label);
 }
 
 static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
@@ -83,7 +101,12 @@ static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
     gtk_window_set_resizable    (GTK_WINDOW(working_window), FALSE);
 
     // do some magic css stuff
-    load_css();
+    loadCSS();
+
+    // play audio
+    GstElement* pipeline = gst_parse_launch("playbin uri=file:///Users/timofejkruckov/ded_sem2/gtk/samples/music.mp3", NULL);
+    g_object_set_data(G_OBJECT(working_window), "pipeline", pipeline);
+    gst_element_set_state(pipeline, GST_STATE_PLAYING);
 
     // create working box
     GtkWidget* working_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -96,7 +119,7 @@ static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
 
     // set gif and animation
     GError* error = NULL;
-    GdkPixbufAnimation* animation = gdk_pixbuf_animation_new_from_file("img/gif.gif", &error);
+    GdkPixbufAnimation* animation = gdk_pixbuf_animation_new_from_file("samples/gif.gif", &error);
 
     GdkPixbufAnimationIter* iter = gdk_pixbuf_animation_get_iter(animation, NULL);
 
@@ -105,7 +128,7 @@ static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
     data->animation = animation;
     data->iter = iter;
 
-    data->timeout_id = g_timeout_add(100, update_animation, data);
+    data->timeout_id = g_timeout_add(100, updateAnimation, data);
 
     gtk_widget_set_halign(picture, GTK_ALIGN_END);
     gtk_widget_set_valign(picture, GTK_ALIGN_FILL);
@@ -140,6 +163,8 @@ static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
     gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), crack_button);
     g_signal_connect(crack_button, "clicked", G_CALLBACK(crackFile), left_side_overlay);
 
+    g_signal_connect(working_window, "close-request", G_CALLBACK (closeRequest), NULL);
+
     gtk_window_present(GTK_WINDOW(working_window));
 }
 
@@ -152,14 +177,14 @@ static void runMainWindow(GtkApplication* app, gpointer* user_data){
     gtk_window_set_resizable    (GTK_WINDOW(main_window), FALSE);
 
     // do some magic css stuff
-    load_css();
+    loadCSS();
 
     // set overlay for background and box
     GtkWidget* main_overlay = gtk_overlay_new();
     gtk_window_set_child(GTK_WINDOW (main_window), main_overlay);
 
     // create picture for background
-    GtkWidget* main_background = gtk_picture_new_for_filename("img/main_background.jpg");
+    GtkWidget* main_background = gtk_picture_new_for_filename("samples/main_background.jpg");
 
     // set background to overlay as main child
     gtk_overlay_set_child       (GTK_OVERLAY(main_overlay), main_background);
@@ -187,6 +212,8 @@ static void runMainWindow(GtkApplication* app, gpointer* user_data){
 }
 
 int main(int argc, char* argv[]){
+    gst_init(&argc, &argv);
+
     GtkApplication* app = gtk_application_new("COM.CRACK", G_APPLICATION_DEFAULT_FLAGS);
 
     g_signal_connect(app, "activate", G_CALLBACK(runMainWindow), NULL);
@@ -194,6 +221,8 @@ int main(int argc, char* argv[]){
     int status = g_application_run(G_APPLICATION(app), argc, argv);
 
     g_object_unref(app);
+
+    gst_deinit();
 
     return status;
 }
