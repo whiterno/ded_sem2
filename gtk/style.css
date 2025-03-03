@@ -49,6 +49,13 @@ box#working_box {
   background: #434242;
 }
 
+label#main_label {
+  font-family: Georgia;
+  font-size: 70px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
 label#explanatory_label {
   font-family: Georgia;
   font-size: 30px;

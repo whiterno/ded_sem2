@@ -2,3 +2,6 @@ main
 .vscode/
 .idea/
 .DS_Store/
+objs/
+copy/
+bin_patches/patches.h

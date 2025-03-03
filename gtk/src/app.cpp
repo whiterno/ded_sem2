@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <time.h>
+#include <string.h>
 #include <gtk/gtk.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gst/gst.h>
@@ -7,222 +7,441 @@
 #include "../include/app.h"
 #include "../include/patch.h"
 
-typedef struct {
+// Main window
+static void runMainWindow(GtkApplication* app, gpointer* user_data);
+
+static GtkWidget* createMainWindow(GtkApplication* app);
+static GtkWidget* createMainOverlay(GtkWidget* main_window);
+static GtkWidget* createMainBackground(GtkWidget* main_overlay);
+static GtkWidget* createMainBox(GtkWidget* main_overlay);
+static GtkWidget* createMainLabel(GtkWidget* main_box);
+static GtkWidget* createMainButton(GtkWidget* main_box);
+
+static void closeMainWindow(GtkButton* main_button);
+
+// Working window
+static void runWorkingWindow(GtkButton* main_button, gpointer* user_data);
+
+static GtkWidget* createWorkingWindow(GtkApplication* app);
+static GtkWidget* createWorkingBox(GtkWidget* working_window);
+static GtkWidget* createLeftSideOverlay(GtkWidget* working_box);
+static GtkWidget* createExplanatoryLabel(GtkWidget* left_side_overlay);
+static GtkWidget* createFilePathEntry(GtkWidget* left_side_overlay);
+static GtkWidget* createCrackButton(GtkWidget* left_side_overlay);
+
+static GstElement* createAudioPipelineAndPlay();
+
+static GtkWidget* createGif();
+static gboolean updateAnimation(gpointer user_data);
+
+// CSS
+static void loadCSS();
+
+// Crack file
+static void crackFile(GtkButton* crack_button, gpointer* user_data);
+static gboolean updateLabel(gpointer user_data);
+
+// Close request
+static gboolean closeRequest(GtkWindow *window, gpointer* user_data);
+
+// Struct for gif animation
+typedef struct AnimationData{
     GtkPicture* picture;
     GdkPixbufAnimation* animation;
     GdkPixbufAnimationIter* iter;
     guint timeout_id;
 } AnimationData;
 
-static gboolean updateAnimation(gpointer user_data) {
-    AnimationData* data = (AnimationData*)user_data;
+int main(int argc, char* argv[]){
+    // initialize gstream
+    gst_init(&argc, &argv);
 
-    gdk_pixbuf_animation_iter_advance(data->iter, NULL);
+    // create application
+    GtkApplication* app = gtk_application_new(APPLICATION_NAME, G_APPLICATION_DEFAULT_FLAGS);
 
-    GdkPixbuf* frame = gdk_pixbuf_animation_iter_get_pixbuf(data->iter);
-    GdkPaintable* paintable = GDK_PAINTABLE(gdk_texture_new_for_pixbuf(frame));
+    // create activate signal to call runMainWindow when opened
+    g_signal_connect(app, "activate", G_CALLBACK(runMainWindow), NULL);
 
-    gtk_picture_set_paintable(data->picture, paintable);
+    // send activate signal to run application
+    int status = g_application_run(G_APPLICATION(app), argc, argv);
 
-    int delay = gdk_pixbuf_animation_iter_get_delay_time(data->iter);
+    // clear app
+    g_object_unref(app);
 
-    g_source_remove(data->timeout_id);
-    data->timeout_id = g_timeout_add(delay, updateAnimation, data);
+    // clear gstream
+    gst_deinit();
 
-    return G_SOURCE_REMOVE;
+    return status;
 }
 
-static gboolean updateLabel(gpointer user_data){
-    GtkWidget* label = (GtkWidget*)user_data;
-    gtk_label_set_text(GTK_LABEL(label), "SUCCESS! Enjoy your superiority");
+static void runMainWindow(GtkApplication* app, gpointer* user_data){
+    loadCSS();
 
-    return G_SOURCE_REMOVE;
+    GtkWidget* main_window      = createMainWindow(app);
+
+    GtkWidget* main_overlay     = createMainOverlay(main_window);
+
+    GtkWidget* main_background  = createMainBackground(main_overlay);
+    GtkWidget* main_box         = createMainBox(main_overlay);
+
+    GtkWidget* main_label       = createMainLabel(main_box);
+    GtkWidget* main_button      = createMainButton(main_box);
+
+    // create clicked signal to call runWorkingWindow when main button is clicked
+    g_signal_connect(main_button, "clicked", G_CALLBACK(runWorkingWindow), app);
+
+    // show main window
+    gtk_window_present(GTK_WINDOW(main_window));
 }
 
-// some shit with including css
-static void loadCSS(void) {
-    GtkCssProvider *provider;
-    GdkDisplay *display;
+static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
+    loadCSS();
 
-    provider = gtk_css_provider_new();
+    // set user_data to GtkApplication*
+    GtkApplication* app             = GTK_APPLICATION(user_data);
 
-    gtk_css_provider_load_from_path(provider, "style.css");
+    closeMainWindow(main_button);
 
-    display = gdk_display_get_default();
+    GtkWidget* working_window       = createWorkingWindow(app);
 
-    gtk_style_context_add_provider_for_display(
-        display,
-        GTK_STYLE_PROVIDER(provider),
-        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    GstElement* pipeline            = createAudioPipelineAndPlay();
+
+    GtkWidget* working_box          = createWorkingBox(working_window);
+
+    GtkWidget* working_picture      = createGif();
+
+    GtkWidget* left_side_overlay    = createLeftSideOverlay(working_box);
+
+    // set gif as box child (after left_side_overlay for gif to be on the right side)
+    gtk_box_append(GTK_BOX(working_box), working_picture);
+
+    GtkWidget* explanatory_label    =  createExplanatoryLabel(left_side_overlay);
+    GtkWidget* file_path_entry      = createFilePathEntry(left_side_overlay);
+
+    GtkWidget* crack_button         =  createCrackButton(left_side_overlay);
+
+    // create clicked signal to call crackFile when crack button is clicked
+    g_signal_connect(crack_button, "clicked", G_CALLBACK(crackFile), left_side_overlay);
+
+    // create close-request signal to call closeRequest when working window is closed
+    g_signal_connect(working_window, "close-request", G_CALLBACK (closeRequest), pipeline);
+
+    // show working window
+    gtk_window_present(GTK_WINDOW(working_window));
+}
+
+static void loadCSS(){
+    // creating css provider
+    GtkCssProvider* provider = gtk_css_provider_new();
+
+    // parse style.css
+    gtk_css_provider_load_from_path(provider, CSS_PATH);
+
+    // get default display
+    GdkDisplay* display = gdk_display_get_default();
+
+    // add global style provider (aka style.css) to display
+    gtk_style_context_add_provider_for_display(display, GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
 static gboolean closeRequest(GtkWindow *window, gpointer* user_data){
-    GstElement *pipeline = GST_ELEMENT(g_object_get_data(G_OBJECT(window), "pipeline"));
+    // set user data to GstElement*
+    GstElement* pipeline = GST_ELEMENT(user_data);
 
-    gst_element_set_state (pipeline, GST_STATE_NULL);
-    gst_object_unref (pipeline);
+    // stop playing audio
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+
+    // clear pipeline
+    gst_object_unref(pipeline);
 
     return FALSE;
 }
 
 static void crackFile(GtkButton* crack_button, gpointer* user_data){
+    // set user_data to GtkOverlay*
     GtkOverlay* left_side_overlay = GTK_OVERLAY(user_data);
+
+    // get file_path_entry as left_side_overlay 2nd child
     GtkWidget* explanatory_label = gtk_overlay_get_child(left_side_overlay);
+    GtkWidget* file_path_entry = gtk_widget_get_next_sibling(explanatory_label);
 
-    GtkWidget* file_path_entry = gtk_widget_get_first_child(GTK_WIDGET(left_side_overlay));
-    file_path_entry = gtk_widget_get_next_sibling(file_path_entry);
-
+    // get text in file_path_entry
     GtkEntryBuffer* file_path_buffer = gtk_entry_get_buffer(GTK_ENTRY(file_path_entry));
     const char* file_path = gtk_entry_buffer_get_text(file_path_buffer);
 
-    FILE* file_to_crack = fopen(file_path, "r");
+    // check if file exists
+    FILE* file_to_crack = fopen(file_path, "r+b");
     if (!file_to_crack){
-        gtk_label_set_label(GTK_LABEL(explanatory_label), "Sorry! But this file doesn't exist! Try another one");
+        gtk_label_set_label(GTK_LABEL(explanatory_label), FILE_NOT_FOUND_MSG);
+
+        fclose(file_to_crack);
+
         return;
     }
 
-    binaryPatch(file_path);
+    // crack file
+    binaryPatch(file_to_crack, file_path);
 
-    gtk_label_set_label(GTK_LABEL(explanatory_label), "!-------Work in progress-------!");
+    // set WORK_IN_PROGRESS_MSG message in explanatory_label
+    gtk_label_set_label(GTK_LABEL(explanatory_label), WORK_IN_PROGRESS_MSG);
 
-    g_timeout_add_seconds(3, updateLabel, explanatory_label);
+    // call updateLabel after WORK_TIME_DELAY s
+    g_timeout_add_seconds(WORK_TIME_DELAY, updateLabel, explanatory_label);
 }
 
-static void runWorkingWindow(GtkButton* main_button, gpointer* user_data){
-    GtkApplication* app = GTK_APPLICATION(user_data);
+//////////////////////////////////////
+//////////////////////////////////////
+///// MAIN WINDOW STATICS BELOW //////
+//////////////////////////////////////
+//////////////////////////////////////
 
-    GtkWindow* current_window = GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(main_button)));
-    gtk_window_close(current_window);
+static GtkWidget* createMainWindow(GtkApplication* app){
+    // create window bonded to app
+    GtkWidget* main_window = gtk_application_window_new(app);
 
-    GtkWidget* working_window = gtk_application_window_new(GTK_APPLICATION(app));
-
-    gtk_window_set_title        (GTK_WINDOW (working_window), "Crack World");
-    gtk_window_set_default_size (GTK_WINDOW (working_window), DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    gtk_window_set_resizable    (GTK_WINDOW(working_window), FALSE);
-
-    // do some magic css stuff
-    loadCSS();
-
-    // play audio
-    GstElement* pipeline = gst_parse_launch("playbin uri=file:///Users/timofejkruckov/ded_sem2/gtk/samples/music.mp3", NULL);
-    g_object_set_data(G_OBJECT(working_window), "pipeline", pipeline);
-    gst_element_set_state(pipeline, GST_STATE_PLAYING);
-
-    // create working box
-    GtkWidget* working_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_set_name(working_box, "working_box");
-    gtk_window_set_child(GTK_WINDOW(working_window), working_box);
-
-    // create gif
-    GtkWidget* picture = gtk_picture_new();
-    gtk_widget_set_hexpand(picture, TRUE);
-
-    // set gif and animation
-    GError* error = NULL;
-    GdkPixbufAnimation* animation = gdk_pixbuf_animation_new_from_file("samples/gif.gif", &error);
-
-    GdkPixbufAnimationIter* iter = gdk_pixbuf_animation_get_iter(animation, NULL);
-
-    AnimationData* data = g_new0(AnimationData, 1);
-    data->picture = GTK_PICTURE(picture);
-    data->animation = animation;
-    data->iter = iter;
-
-    data->timeout_id = g_timeout_add(100, updateAnimation, data);
-
-    gtk_widget_set_halign(picture, GTK_ALIGN_END);
-    gtk_widget_set_valign(picture, GTK_ALIGN_FILL);
-
-    // create overlay for left side of working window
-    GtkWidget* left_side_overlay = gtk_overlay_new();
-    gtk_widget_set_name(left_side_overlay, "left_side_overlay");
-    gtk_box_append(GTK_BOX(working_box), left_side_overlay);
-
-    // set gif as box child
-    gtk_box_append(GTK_BOX(working_box), picture);
-
-    // create explanatory label
-    GtkWidget* explanatory_label = gtk_label_new(NULL);
-    gtk_widget_set_name(explanatory_label, "explanatory_label");
-    gtk_label_set_markup(GTK_LABEL(explanatory_label), "Welcome! To start the job write down the file, you "
-                                                       "want to crack.");
-    gtk_label_set_wrap(GTK_LABEL(explanatory_label), TRUE);
-
-    gtk_overlay_set_child(GTK_OVERLAY(left_side_overlay), explanatory_label);
-
-    // create entry
-    GtkWidget* file_path_entry = gtk_entry_new();
-    gtk_widget_set_name(file_path_entry, "file_path_entry");
-    gtk_entry_set_placeholder_text(GTK_ENTRY(file_path_entry), "Input path to file you want to crack");
-
-    gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), file_path_entry);
-
-    // create crack button
-    GtkWidget* crack_button = gtk_button_new_with_label("Crack this!");
-    gtk_widget_set_name(crack_button, "crack_button");
-    gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), crack_button);
-    g_signal_connect(crack_button, "clicked", G_CALLBACK(crackFile), left_side_overlay);
-
-    g_signal_connect(working_window, "close-request", G_CALLBACK (closeRequest), NULL);
-
-    gtk_window_present(GTK_WINDOW(working_window));
-}
-
-static void runMainWindow(GtkApplication* app, gpointer* user_data){
-    // create main window
-    GtkWidget* main_window = gtk_application_window_new(GTK_APPLICATION(app));
-
-    gtk_window_set_title        (GTK_WINDOW (main_window), "Crack World");
+    // set parametres for main window
+    gtk_window_set_title        (GTK_WINDOW (main_window), WINDOW_TITLE);
     gtk_window_set_default_size (GTK_WINDOW (main_window), DEFAULT_WIDTH, DEFAULT_HEIGHT);
     gtk_window_set_resizable    (GTK_WINDOW(main_window), FALSE);
 
-    // do some magic css stuff
-    loadCSS();
-
-    // set overlay for background and box
-    GtkWidget* main_overlay = gtk_overlay_new();
-    gtk_window_set_child(GTK_WINDOW (main_window), main_overlay);
-
-    // create picture for background
-    GtkWidget* main_background = gtk_picture_new_for_filename("samples/main_background.jpg");
-
-    // set background to overlay as main child
-    gtk_overlay_set_child       (GTK_OVERLAY(main_overlay), main_background);
-    gtk_picture_set_content_fit (GTK_PICTURE(main_background), GTK_CONTENT_FIT_COVER);
-
-    // create box for main label and button
-    GtkWidget* main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    gtk_widget_set_margin_start(main_box, 20);
-    gtk_widget_set_halign(main_box, GTK_ALIGN_START);
-    gtk_widget_set_valign(main_box, GTK_ALIGN_CENTER);
-    gtk_overlay_add_overlay(GTK_OVERLAY(main_overlay), main_box);
-
-    // create main label
-    GtkWidget* main_label = gtk_label_new(NULL);
-    gtk_label_set_markup(GTK_LABEL(main_label), "<span color=\"white\" weight=\"bold\" font=\"Verdana 70\">Crack World</span>");
-    gtk_box_append(GTK_BOX(main_box), main_label);
-
-    // crate main button
-    GtkWidget* main_button = gtk_button_new_with_label("Start your journey");
-    gtk_widget_set_name(main_button, "main_button");
-    gtk_box_append(GTK_BOX(main_box), main_button);
-    g_signal_connect(main_button, "clicked", G_CALLBACK(runWorkingWindow), app);
-
-    gtk_window_present          (GTK_WINDOW(main_window));
+    return main_window;
 }
 
-int main(int argc, char* argv[]){
-    gst_init(&argc, &argv);
+static GtkWidget* createMainOverlay(GtkWidget* main_window){
+    // create main overlay
+    GtkWidget* main_overlay = gtk_overlay_new();
 
-    GtkApplication* app = gtk_application_new("COM.CRACK", G_APPLICATION_DEFAULT_FLAGS);
+    // set main_overlay as main_window child
+    gtk_window_set_child(GTK_WINDOW(main_window), main_overlay);
 
-    g_signal_connect(app, "activate", G_CALLBACK(runMainWindow), NULL);
+    return main_overlay;
+}
 
-    int status = g_application_run(G_APPLICATION(app), argc, argv);
+static GtkWidget* createMainBackground(GtkWidget* main_overlay){
+    // create main background
+    GtkWidget* main_background = gtk_picture_new_for_filename(MAIN_BACKGROUND_PATH);
 
-    g_object_unref(app);
+    // set main_background as main_overlay child (first child)
+    gtk_overlay_set_child(GTK_OVERLAY(main_overlay), main_background);
 
-    gst_deinit();
+    // set parametres
+    gtk_picture_set_content_fit(GTK_PICTURE(main_background), GTK_CONTENT_FIT_COVER);
 
-    return status;
+    return main_background;
+}
+
+static GtkWidget* createMainBox(GtkWidget* main_overlay){
+    // create main box for main label and main button
+    GtkWidget* main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, MAIN_BOX_ELEMENT_SPACING);
+
+    // set parametres
+    gtk_widget_set_margin_start (main_box, MAIN_BOX_MARGIN_LEFT_SIDE);
+    gtk_widget_set_halign       (main_box, GTK_ALIGN_START);
+    gtk_widget_set_valign       (main_box, GTK_ALIGN_CENTER);
+
+    // set main_box as main_overlay child (second child)
+    gtk_overlay_add_overlay(GTK_OVERLAY(main_overlay), main_box);
+
+    return main_box;
+}
+
+static GtkWidget* createMainLabel(GtkWidget* main_box){
+    // create main label
+    GtkWidget* main_label = gtk_label_new(NULL);
+
+    // set name for style.css
+    gtk_widget_set_name(main_label, "main_label");
+
+    // set label text
+    gtk_label_set_label(GTK_LABEL(main_label), MAIN_LABEL_TEXT);
+
+    // set main_label as main_box child
+    gtk_box_append(GTK_BOX(main_box), main_label);
+
+    return main_label;
+}
+
+static GtkWidget* createMainButton(GtkWidget* main_box){
+    // create main button
+    GtkWidget* main_button = gtk_button_new_with_label(MAIN_BUTTON_TEXT);
+
+    // set name for style.css
+    gtk_widget_set_name(main_button, "main_button");
+
+    // set main_button as main_box child
+    gtk_box_append(GTK_BOX(main_box), main_button);
+
+    return main_button;
+}
+
+////////////////////////////////////////
+////////////////////////////////////////
+///// WORKING WINDOW STATICS BELOW /////
+////////////////////////////////////////
+////////////////////////////////////////
+
+static void closeMainWindow(GtkButton* main_button){
+    // get main_window pointer as of main_button's parent
+    GtkWindow* main_window = GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(main_button)));
+
+    gtk_window_close(main_window);
+}
+
+static GtkWidget* createWorkingWindow(GtkApplication* app){
+    // create working window bonded to app
+    GtkWidget* working_window = gtk_application_window_new(app);
+
+    // set parametres
+    gtk_window_set_title        (GTK_WINDOW (working_window), WINDOW_TITLE);
+    gtk_window_set_default_size (GTK_WINDOW (working_window), DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    gtk_window_set_resizable    (GTK_WINDOW(working_window), FALSE);
+
+    return working_window;
+}
+
+static GstElement* createAudioPipelineAndPlay(){
+    // concatenate strings
+    char launch_arg[MAX_CMD_SIZE];
+    strcpy(launch_arg, "playbin uri=file://");
+    strcat(launch_arg, MUSIC_PATH);
+
+    // create audio pipeline
+    GstElement* pipeline = gst_parse_launch(launch_arg, NULL);
+
+    // play audio
+    gst_element_set_state(pipeline, GST_STATE_PLAYING);
+
+    return pipeline;
+}
+
+static GtkWidget* createWorkingBox(GtkWidget* working_window){
+    // create working box
+    GtkWidget* working_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, WORKING_BOX_ELEMENT_SPACING);
+
+    // set name for style.css
+    gtk_widget_set_name(working_box, "working_box");
+
+    // set working_box as working_window child
+    gtk_window_set_child(GTK_WINDOW(working_window), working_box);
+
+    return working_box;
+}
+
+static GtkWidget* createGif(){
+    // create picture (container for time-changing puctures)
+    GtkWidget* working_picture = gtk_picture_new();
+
+    // create animation by loading it from file
+    GError* error = NULL;
+    GdkPixbufAnimation* animation = gdk_pixbuf_animation_new_from_file(GIF_PATH, &error);
+
+    // get an iterator for displaying an animation
+    GdkPixbufAnimationIter* iter = gdk_pixbuf_animation_get_iter(animation, NULL);
+
+    // allocate AnimationData object
+    AnimationData* data = g_new0(AnimationData, 1);
+
+    // set fields
+    data->picture   = GTK_PICTURE(working_picture);
+    data->animation = animation;
+    data->iter      = iter;
+
+    // call updateAnimation once in UPDATE_ANIMATION_DELAY ms
+    g_timeout_add(UPDATE_ANIMATION_DELAY, updateAnimation, data);
+
+    // set parametres
+    gtk_widget_set_halign(working_picture, GTK_ALIGN_END);
+    gtk_widget_set_valign(working_picture, GTK_ALIGN_FILL);
+
+    return working_picture;
+}
+
+static gboolean updateAnimation(gpointer user_data) {
+    // set user_data to AnimationData*
+    AnimationData* data = (AnimationData*)user_data;
+
+    // advances an animation to a new frame
+    gdk_pixbuf_animation_iter_advance(data->iter, NULL);
+
+    // get frame from data
+    GdkPixbuf* frame = gdk_pixbuf_animation_iter_get_pixbuf(data->iter);
+
+    // create paintable with frame
+    GdkPaintable* paintable = GDK_PAINTABLE(gdk_texture_new_for_pixbuf(frame));
+
+    // set paintable in picture
+    gtk_picture_set_paintable(data->picture, paintable);
+
+    return TRUE;
+}
+
+static GtkWidget* createLeftSideOverlay(GtkWidget* working_box){
+    // create left side overlay
+    GtkWidget* left_side_overlay = gtk_overlay_new();
+
+    // set name for style.css
+    gtk_widget_set_name(left_side_overlay, "left_side_overlay");
+
+    // set left_side_overlay as working_box child
+    gtk_box_append(GTK_BOX(working_box), left_side_overlay);
+
+    return left_side_overlay;
+}
+
+static GtkWidget* createExplanatoryLabel(GtkWidget* left_side_overlay){
+    // create explanatory label
+    GtkWidget* explanatory_label = gtk_label_new(NULL);
+
+    // set name for style.css
+    gtk_widget_set_name(explanatory_label, "explanatory_label");
+
+    // set label text
+    gtk_label_set_label(GTK_LABEL(explanatory_label), "Welcome! To start the job write down the file, you want to crack.");
+
+    // enable line break
+    gtk_label_set_wrap(GTK_LABEL(explanatory_label), TRUE);
+
+    // set explanatory_label as left_side_overlay child (first child)
+    gtk_overlay_set_child(GTK_OVERLAY(left_side_overlay), explanatory_label);
+
+    return explanatory_label;
+}
+
+static GtkWidget* createFilePathEntry(GtkWidget* left_side_overlay){
+    // create file path entry
+    GtkWidget* file_path_entry = gtk_entry_new();
+
+    // set name for style.css
+    gtk_widget_set_name(file_path_entry, "file_path_entry");
+
+    // set placeholder text
+    gtk_entry_set_placeholder_text(GTK_ENTRY(file_path_entry), "Input path to file you want to crack");
+
+    // set file_path_entry as left_side_overlay child (second child)
+    gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), file_path_entry);
+
+    return file_path_entry;
+}
+
+static GtkWidget* createCrackButton(GtkWidget* left_side_overlay){
+    // create crack button
+    GtkWidget* crack_button = gtk_button_new_with_label("Crack this!");
+
+    // set name for style.css
+    gtk_widget_set_name(crack_button, "crack_button");
+
+    // set crack_button as left_side_overlay child (third child)
+    gtk_overlay_add_overlay(GTK_OVERLAY(left_side_overlay), crack_button);
+
+    return crack_button;
+}
+
+static gboolean updateLabel(gpointer user_data){
+    // set user_data to GtkWidget*
+    GtkWidget* label = (GtkWidget*)user_data;
+
+    // set label's text
+    gtk_label_set_label(GTK_LABEL(label), "SUCCESS! Enjoy your superiority");
+
+    return FALSE;
 }

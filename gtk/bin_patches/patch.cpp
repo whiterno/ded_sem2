@@ -3,16 +3,15 @@
 
 #include "../include/patch.h"
 
-static void CKACKME_Patch();
+static void CKACKME_Patch(FILE* file);
 
-void binaryPatch(const char* file_path){
+void binaryPatch(FILE* file ,const char* file_path){
     if (strcmp(file_path, "to_crack/CKACKME.COM") == 0){
-        CKACKME_Patch();
+        CKACKME_Patch(file);
     }
 }
 
-static void CKACKME_Patch(){
-    FILE* file = fopen("to_crack/CKACKME.COM", "r+b");
+static void CKACKME_Patch(FILE* file){
     int offset = 0x4c;
     int password_address = 0x26;
 
