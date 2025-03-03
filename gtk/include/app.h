@@ -25,6 +25,7 @@ const char GIF_PATH[]                   = "samples/gif.gif";
 const char MAIN_LABEL_TEXT[]            = "Crack World";
 const char MAIN_BUTTON_TEXT[]           = "Start your journey";
 
+const char NO_CRACK[]                   = "No crack for this file (and for you ;')";
 const char FILE_NOT_FOUND_MSG[]         = "Sorry! But this file doesn't exist! Try another one";
 const char WORK_IN_PROGRESS_MSG[]       = "!-------Work in progress-------!";
 

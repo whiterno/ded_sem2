@@ -5,10 +5,14 @@
 
 static void CKACKME_Patch(FILE* file);
 
-void binaryPatch(FILE* file ,const char* file_path){
+int binaryPatch(FILE* file ,const char* file_path){
     if (strcmp(file_path, "to_crack/CKACKME.COM") == 0){
         CKACKME_Patch(file);
+
+        return SUCCESS;
     }
+
+    return NO_CRACK_TO_THIS_FILE;
 }
 
 static void CKACKME_Patch(FILE* file){

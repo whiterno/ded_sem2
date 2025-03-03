@@ -180,7 +180,14 @@ static void crackFile(GtkButton* crack_button, gpointer* user_data){
     }
 
     // crack file
-    binaryPatch(file_to_crack, file_path);
+    int return_result = binaryPatch(file_to_crack, file_path);
+
+    if (return_result == NO_CRACK_TO_THIS_FILE){
+        // set NO_CRACK message in explanatory_label
+        gtk_label_set_label(GTK_LABEL(explanatory_label), NO_CRACK);
+
+        return;
+    }
 
     // set WORK_IN_PROGRESS_MSG message in explanatory_label
     gtk_label_set_label(GTK_LABEL(explanatory_label), WORK_IN_PROGRESS_MSG);
@@ -294,7 +301,7 @@ static GtkWidget* createWorkingWindow(GtkApplication* app){
     // set parametres
     gtk_window_set_title        (GTK_WINDOW (working_window), WINDOW_TITLE);
     gtk_window_set_default_size (GTK_WINDOW (working_window), DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    gtk_window_set_resizable    (GTK_WINDOW(working_window), FALSE);
+    gtk_window_set_resizable    (GTK_WINDOW (working_window), FALSE);
 
     return working_window;
 }
