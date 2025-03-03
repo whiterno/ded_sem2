@@ -1,8 +1,7 @@
 main
 .vscode/
 .idea/
-.DS_Store/
-../.DS_Store/
+.DS_Store
 objs/
 copy/
 bin_patches/patches.h
